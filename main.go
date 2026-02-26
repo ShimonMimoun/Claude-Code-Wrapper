@@ -44,7 +44,7 @@ const (
 )
 
 func main() {
-	printLogo()
+	printLogo(false)
 
 	// 1. Initial authentication check
 	doneSpinner := make(chan bool)
@@ -75,10 +75,10 @@ func main() {
 	// 3. Verify the presence of the native Claude executable
 	ensureCliExists(token)
 
-	// 4. Start background token check (every 3 hours)
+	// 4. Start background token check (every 10 minutes)
 	go startBackgroundTokenCheck()
 
-	fmt.Printf("\n%s💡 TIP: Keep this terminal open! Wrapper will automatically refresh your SSO token in the background every 3 hours.%s\n\n", ColorYellow, ColorReset)
+	fmt.Printf("\n%s💡 TIP: Keep this terminal open! Wrapper will automatically verify your SSO token every 10 minutes.%s\n\n", ColorYellow, ColorReset)
 
 	// 5. MAIN LOOP: Launch Claude, then drop into Wrapper Shell when it exits
 	for {
@@ -92,6 +92,7 @@ func main() {
 // shellSuggestions returns command suggestions for go-prompt
 func shellSuggestions(d prompt.Document) []prompt.Suggest {
 	s := []prompt.Suggest{
+		{Text: "/claude", Description: "Open Claude Code"},
 		{Text: "/restart", Description: "Launch Claude Code again"},
 		{Text: "/start", Description: "Launch Claude Code again"},
 		{Text: "/login", Description: "Force a new SSO authentication"},
@@ -110,7 +111,8 @@ func shellSuggestions(d prompt.Document) []prompt.Suggest {
 func WrapperShell() {
 	fmt.Printf("\n%s──────────────────────────────────────────────────────────────────────────────────────────────────%s\n", ColorDark, ColorReset)
 	
-	printLogo()
+	isLoggedIn := getToken() != "" && isTokenValid(getToken())
+	printLogo(isLoggedIn)
 	fmt.Printf("\n%s[Wrapper] Claude Code session completed.%s\n", ColorDark, ColorReset)
 	fmt.Printf("\n%s💡 Tip: Do not close this window to keep your automatic token renewal active.%s\n", ColorYellow, ColorReset)
 	fmt.Printf("\n%sType /help to see all available commands.%s\n\n\n", ColorDark, ColorReset)
@@ -129,8 +131,8 @@ func WrapperShell() {
 		input = strings.TrimSpace(input)
 
 		switch input {
-		case "/restart", "/start":
-			fmt.Printf("\n%s🚀 Restarting Claude Code...%s\n\n", ColorGreen, ColorReset)
+		case "/claude", "/restart", "/start":
+			fmt.Printf("\n%s🚀 Opening Claude Code...%s\n\n", ColorGreen, ColorReset)
 			return // Exits the shell, returning to the main loop to launch Claude
 
 		case "/login":
@@ -141,7 +143,8 @@ func WrapperShell() {
 				saveToken(newToken)
 				fetchAndMergeSettings(newToken)
 				ensureCliExists(newToken)
-				fmt.Printf("\n%s✅ New token saved successfully! Type /restart to launch Claude Code.%s\n", ColorGreen, ColorReset)
+				fmt.Printf("\n%s✅ Connected! Launching Claude Code...%s\n\n", ColorGreen, ColorReset)
+				return // Auto-launch Claude Code after successful login
 			} else {
 				fmt.Printf("\n%s❌ Authentication failed. Try again with /login.%s\n", ColorRed, ColorReset)
 			}
@@ -168,12 +171,13 @@ func WrapperShell() {
 			fmt.Printf("   %s👉 %s/dashboard%s\n\n", ColorGreen, CliDownloadBase, ColorReset)
 
 		case "/about":
-			printLogo()
+			printLogo(isLoggedIn)
 			fmt.Printf("\n%sWrapper AI Wrapper for Claude Code - Enterprise Edition%s\n", ColorDark, ColorReset)
 			fmt.Printf("\n%sVersion 1.0.0 | Built for AI Engineering & DevOps%s\n\n", ColorDark, ColorReset)
 
 		case "/help":
 			fmt.Printf("\n%s🛠️  Available Commands:%s\n", ColorDark, ColorReset)
+			fmt.Printf("  %s/claude%s       - Open Claude Code\n", ColorGreen, ColorReset)
 			fmt.Printf("  %s/restart%s      - Launch the Claude Code interface again\n", ColorGreen, ColorReset)
 			fmt.Printf("  %s/login%s        - Force a new SSO authentication session\n", ColorGreen, ColorReset)
 			fmt.Printf("  %s/reload%s       - Refresh enterprise settings (alias: /refresh)\n", ColorGreen, ColorReset)
@@ -241,7 +245,7 @@ func stripAnsi(s string) string {
 	return r
 }
 
-func printLogo() {
+func printLogo(isLoggedIn bool) {
 	// Two clean colors only
 	red := func(s string) string { return colorize(s, 240, 0, 11, false) }     // rgb(240,0,11)
 	redBold := func(s string) string { return colorize(s, 240, 0, 11, true) }  // rgb(240,0,11) bold
@@ -294,13 +298,21 @@ func printLogo() {
 		line{gray("~/.claude"), "~/.claude"},
 	)
 
+	// Login status indicator
+	var statusLine string
+	if isLoggedIn {
+		statusLine = colorize("● Connected", 76, 175, 80, true)
+	} else {
+		statusLine = colorize("○ Not connected", 240, 0, 11, true)
+	}
+
 	right := []string{
+		redBold("Status"),
+		statusLine,
+		"",
 		redBold("Tips for getting started"),
 		gray("Type /help for commands"),
 		gray("Type /about for info"),
-		"",
-		redBold("Recent activity"),
-		gray("No recent activity"),
 	}
 
 	for len(right) < len(left) {
@@ -462,13 +474,13 @@ func launchClaudeCode() {
 // --- Background Logic (Renewal Daemon) ---
 
 func startBackgroundTokenCheck() {
-	ticker := time.NewTicker(3 * time.Hour)
+	ticker := time.NewTicker(10 * time.Minute)
 	defer ticker.Stop()
 
 	for range ticker.C {
 		token := getToken()
 		if !isTokenValid(token) {
-			fmt.Printf("\n\n%s[Wrapper] ⚠️ Session expired after 3h. Renewing access...%s\n", ColorYellow, ColorReset)
+			fmt.Printf("\n\n%s[Wrapper] ⚠️ Token expired. Launching SSO login...%s\n", ColorYellow, ColorReset)
 			fmt.Printf("\n%s[Wrapper] 🔗 Manual reconnection link: %s\n%s", ColorDark, ssoURL(DefaultPort), ColorReset)
 
 			newToken := authenticateViaSSO()
