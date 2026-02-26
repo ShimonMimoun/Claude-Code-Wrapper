@@ -10,7 +10,8 @@
 
 # Test binary, built with `go test -c`
 *.test
-
+.venv
+.venv/*
 .idea 
 .idea/*
 .vscode

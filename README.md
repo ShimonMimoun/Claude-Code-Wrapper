@@ -123,6 +123,15 @@ Enterprise-managed settings (model allowlists, permissions, etc.) are automatica
 
 For Windows builds with a custom icon and file description, see [help.md](help.md) for instructions using `go-winres`.
 
+
+## Author 
+
+```markdown
+**Shimon Mimoun**
+```
+- [LinkedIn](https://www.linkedin.com/in/shimon.mimoun/)
+- [GitHub](https://github.com/shimonmimoun)
+
 ---
 
 ## 📄 License
